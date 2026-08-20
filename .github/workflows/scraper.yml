@@ -1,35 +1,70 @@
-name: 👑 Dalelak Price Intelligence Engine
+name: 👑 Dalelak Ultimate God-Mode Scraper Engine (2 AM Daily)
 
 on:
   schedule:
-    - cron: '0 0 * * *' # يعمل تلقائياً كل يوم الساعة 12 منتصف الليل
-  workflow_dispatch:     # يتيح لك تشغيله يدوياً من زرار في جيت هب في أي وقت
+    - cron: '0 2 * * *' # يعمل تلقائياً يومياً في الساعة 2:00 صباحاً للحصول على أحدث الأسعار بانتظام
+  workflow_dispatch:     # زرار التشغيل اليدوي الفوري من جيت هب في أي وقت
+
+concurrency:
+  group: ultimate-scraper-production
+  cancel-in-progress: true
 
 jobs:
   run-scraper:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NODE_OPTIONS: "--max-old-space-size=4096" # حجز رام إضافية لضمان سرعة خرافية في معالجة البيانات
 
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🛠️ Setup Node.js
+      - name: 🛠️ Setup Node.js & Cache npm
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
+      - name: 🎭 Cache Playwright Browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
       - name: 📦 Install Dependencies
         run: npm ci
 
-      - name: 🎭 Install Playwright Browsers & System Dependencies
+      - name: 🎭 Install Playwright Browsers (If missing)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
 
-      - name: 🚀 Run Master Scraper Engine
+      - name: 🚀 Run Master Scraper Engine (God Mode)
+        id: run-engine
         env:
           TURSO_DB_URL: ${{ secrets.TURSO_DB_URL }}
           TURSO_DB_TOKEN: ${{ secrets.TURSO_DB_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          PROXY_URL: ${{ secrets.PROXY_URL }} # لو هتستخدم بروكسي مستقبلاً
+          PROXY_URL: ${{ secrets.PROXY_URL }}
         run: node run.js
+
+      - name: 📊 Generate GitHub Actions Summary Report
+        if: always()
+        run: |
+          echo "### 👑 Dalelak Scraper Execution Report" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ${{ steps.run-engine.outcome == 'success' && '✅ Success (تمت بنجاح)' || '❌ Failed (حدث خطأ)' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment:** GitHub Actions (Ubuntu Latest / God Mode)" >> $GITHUB_STEP_SUMMARY
+
+      - name: 📂 Upload Error Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-error-logs
+          path: |
+            logs.txt
+            *.log
